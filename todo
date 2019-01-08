@@ -1,0 +1,11 @@
+//Check vid updates still working after overhaul!
+
+//Swap SQL over to struct methods
+
+//Remove Channel Struct from YTclient, swap all logic to use sql directly rather than awkward middle man
+
+form github repo
+
+Clean startup init a bit
+
+Add discord commands.
