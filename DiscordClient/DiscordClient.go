@@ -69,7 +69,6 @@ func (c *ServerContext) guildCreate(s *discordgo.Session, event *discordgo.Guild
 	//We do this because the guild create event may come a tad slower than we'd like
 	//and dont want to accidentally try to do some work before were ready
 	c._events <- true
-	//fmt.Println("sent")
 	return
 }
 

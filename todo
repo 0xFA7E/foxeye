@@ -6,6 +6,12 @@
 
 //form github repo
 
-Clean startup init a bit
+implement better logging across the board, implement better recovery now that we know the base logic is working
+-foxeye.go done, need to implement across clients, need to pass logger context, need command flag to set verbose level
 
-Add discord commands.
+//core feature
+Add discord commands:
+    add channel to watch list
+    remove channel from watch list
+    user roles so not everyone can freely remove/add
+    playlist/quick link adding/posting
