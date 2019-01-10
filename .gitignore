@@ -1,7 +1,0 @@
-*.db
-*.json
-scratchpad.go
-.vscode/settings.json
-foxeye.code-workspace
-.vscode
-*.exe
