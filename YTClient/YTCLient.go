@@ -1,6 +1,7 @@
 package YTClient
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -18,10 +19,9 @@ const watchyt = "https://www.youtube.com/watch?v="
 /*YoutubeClient is filled with an api key, then call Service() to generate a youtube api
 client. Methods can then be attached to call the api such as RecentVideo */
 type YoutubeClient struct {
-	APIKey   string
-	service  *youtube.Service
-	SQLCli   *SqliteClient.ChannelWatch
-	channels []string
+	APIKey  string
+	service *youtube.Service
+	SQLCli  *SqliteClient.SQLCli
 }
 
 func (c *YoutubeClient) Service() {
@@ -31,10 +31,10 @@ func (c *YoutubeClient) Service() {
 		log.Fatalf("Error creating youtube client: %v", err)
 	}
 	c.service = ser
-	//c.channels = make(map[string]*YoutubeChannel)
 }
 
 func (c *YoutubeClient) ExtractID(url string) (string, error) {
+
 	s := strings.Split(url, "/")
 	if strings.Contains(url, "/channel/") {
 		c.SQLCli.UpdateChanID(url, s[len(s)-1])
@@ -45,6 +45,9 @@ func (c *YoutubeClient) ExtractID(url string) (string, error) {
 	resp, err := call.Do()
 	if err != nil {
 		return "", err
+	}
+	if len(resp.Items) <= 0 {
+		return "", errors.New("Not a valid channel link")
 	}
 	c.SQLCli.UpdateChanID(url, resp.Items[0].Id)
 	return resp.Items[0].Id, nil
@@ -89,6 +92,20 @@ func (c *YoutubeClient) RecentVideo(timeAfter time.Time) []string {
 		}
 	}
 	return urls
+}
+
+func (c *YoutubeClient) AddChannels(channels []string) error {
+	for _, channel := range channels {
+		channelID, err := c.ExtractID(channel)
+		if err != nil {
+			return errors.New("Failed to extract channel id")
+		}
+		err = c.SQLCli.AddChannel(channel, channelID)
+		if err != nil {
+			return errors.New("Failed to add channel")
+		}
+	}
+	return nil
 }
 
 func createLink(vID string) string {

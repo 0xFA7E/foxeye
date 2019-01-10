@@ -2,21 +2,17 @@ package SqliteClient
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type ChannelWatch struct {
-	ID          int
-	ChannelLink string
-	ChanID      string
-	LastVideo   string
-	LastUpdate  string
-	DB          *sql.DB
+type SQLCli struct {
+	DB *sql.DB
 }
 
-func (db *ChannelWatch) InitDB(filepath string) {
+func (db *SQLCli) InitDB(filepath string) {
 	var err error
 	if filepath == "" {
 		log.Fatalf("Database filename not set")
@@ -30,7 +26,7 @@ func (db *ChannelWatch) InitDB(filepath string) {
 	}
 }
 
-func (db *ChannelWatch) CreateTable() {
+func (db *SQLCli) CreateTable() {
 	//create a table if it doesnt exist
 	sql_table := `
 	CREATE TABLE IF NOT EXISTS ChannelWatch(
@@ -47,7 +43,7 @@ func (db *ChannelWatch) CreateTable() {
 	}
 }
 
-func (db *ChannelWatch) AddChannels(channels []string) {
+func (db *SQLCli) AddChannel(channel string, chanID string) error {
 	sqlAdditem := `
 	INSERT OR REPLACE INTO ChannelWatch(
 		ChannelLink,
@@ -59,23 +55,22 @@ func (db *ChannelWatch) AddChannels(channels []string) {
 
 	stmt, err := db.DB.Prepare(sqlAdditem)
 	if err != nil {
-		log.Fatalf("Could not prep add item statement: %v", err)
+		return errors.New("Could not prep add item statement: " + err.Error())
 	}
 	defer stmt.Close()
-	for _, channel := range channels {
-		row, err := db.DB.Query("SELECT * from ChannelWatch where ChannelLink=?;", channel)
-		if (row.Next()) == true {
-			//record already exists, skip
-			continue
-		}
-		_, err2 := stmt.Exec(channel, "", "", "")
-		if err2 != nil {
-			log.Fatalf("Failed to insert channel:%v", err)
-		}
+	row, err := db.DB.Query("SELECT * from ChannelWatch where ChannelLink=?;", channel)
+	if (row.Next()) == true {
+		//record already exists, skip
+		return nil
 	}
+	_, err2 := stmt.Exec(channel, chanID, "", "")
+	if err2 != nil {
+		return errors.New("Failed to insert channel: " + err.Error())
+	}
+	return nil
 }
 
-func (db *ChannelWatch) UpdateVideo(chanID string, lastvideo string, time string) bool {
+func (db *SQLCli) UpdateVideo(chanID string, lastvideo string, time string) bool {
 	//fmt.Printf("I got called with: \n%v\n%v\n%v\n%v\n", db, chanID, lastvideo, time)
 	sqlLastVid, err := db.DB.Query("Select LastVideo from ChannelWatch where ChanID=?;", chanID)
 	if err != nil {
@@ -108,7 +103,7 @@ func (db *ChannelWatch) UpdateVideo(chanID string, lastvideo string, time string
 	return true
 }
 
-func (db *ChannelWatch) UpdateChanID(channelLink string, channelID string) {
+func (db *SQLCli) UpdateChanID(channelLink string, channelID string) {
 	stmt, err := db.DB.Prepare("update ChannelWatch set ChanID=? where ChannelLink = ?")
 	if err != nil {
 		log.Fatalf("Failed to update channel ID:%v", err)
@@ -119,7 +114,7 @@ func (db *ChannelWatch) UpdateChanID(channelLink string, channelID string) {
 	}
 }
 
-func (db *ChannelWatch) RecentVidFromURL(channel string) (lastvid string, updatetime string) {
+func (db *SQLCli) RecentVidFromURL(channel string) (lastvid string, updatetime string) {
 	sqlCheck := `
 	SELECT LastVideo, LastUpdate from ChannelWatch
 	WHERE ChanID = ?
@@ -140,7 +135,7 @@ func (db *ChannelWatch) RecentVidFromURL(channel string) (lastvid string, update
 	return
 }
 
-func (db *ChannelWatch) WatchList() []string {
+func (db *SQLCli) WatchList() []string {
 	sqlReadAll := `
 	SELECT ChanID from ChannelWatch
 	ORDER BY ID DESC
