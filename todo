@@ -9,6 +9,8 @@
 implement better logging across the board, implement better recovery now that we know the base logic is working
 -foxeye.go done, need to implement across clients, need to pass logger context, need command flag to set verbose level
 
+add proper comments for exported functions
+
 //core feature
 Add discord commands:
     add channel to watch list

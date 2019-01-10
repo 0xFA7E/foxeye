@@ -152,7 +152,7 @@ func main() {
 	log.Info("FOXEYE ENGAGE")
 
 	ytClient, dClient, sqlClient := setupClients(configuration.YtAPIKey, configuration.DiscordAPIKey, configuration.Database)
-
+	defer dClient.Close()
 	log.WithFields(logrus.Fields{
 		"Youtube Client": ytClient,
 		"Discord Client": dClient,

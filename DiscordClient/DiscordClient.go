@@ -10,15 +10,22 @@ import (
 
 type ServerContext struct {
 	*discordgo.Session
-	guild    string
-	channels []discordgo.Channel
-	_events  chan bool
-	APIKey   string
+	guild          string
+	channels       []discordgo.Channel
+	_events        chan bool
+	APIKey         string
+	commmandPrefix string
+	botID          string
 }
 
 func (c *ServerContext) Init() {
 	var err error
 	c._events = make(chan bool)
+
+	if c.commmandPrefix == "" {
+		c.commmandPrefix = "f!"
+	}
+
 	if c.APIKey == "" {
 		log.Fatalf("APIKey not set, cannot initialize")
 	}
@@ -27,7 +34,13 @@ func (c *ServerContext) Init() {
 		log.Fatalf("Error creating session: %v", err)
 		return
 	}
-	c.AddHandler(c.messageCreate)
+	//retrieve bot ID
+	user, nerr := c.Session.User("@me")
+	if nerr != nil {
+		log.Fatalf("Could not retrieve bot ID")
+	}
+	c.botID = user.ID
+	c.AddHandler(c.commandHandler)
 	c.AddHandler(c.guildCreate)
 	err = c.Open()
 	if err != nil {
@@ -40,18 +53,11 @@ func (c *ServerContext) Init() {
 	return
 }
 
-func (c *ServerContext) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (c *ServerContext) commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	//ignore msg created by bot
-	if m.Author.ID == s.State.User.ID {
+	user := m.Author
+	if user.ID == c.botID || user.Bot {
 		return
-	}
-	//if message is "ping" reply with "pong"
-	if m.Content == "ping" {
-		s.ChannelMessageSend(m.ChannelID, "Pong!")
-	}
-	//if msg is pong give ping
-	if m.Content == "pong" {
-		s.ChannelMessageSend(m.ChannelID, "Ping!")
 	}
 }
 
