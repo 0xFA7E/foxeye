@@ -89,6 +89,7 @@ func (c *DiscordClient) commandHandler(s *discordgo.Session, m *discordgo.Messag
 	}
 	c.ping(s, m, c.commmandPrefix)
 	c.addChannel(s, m, c.commmandPrefix)
+	c.removeChannel(s, m, c.commmandPrefix)
 }
 
 func (c *DiscordClient) addChannel(s *discordgo.Session, m *discordgo.MessageCreate, prefix string) {
@@ -101,8 +102,33 @@ func (c *DiscordClient) addChannel(s *discordgo.Session, m *discordgo.MessageCre
 			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to add channels. See logs for more details")
 		} else {
 			err = c.DatabaseClient.AddChannels(ids)
-			c.Log.Println("Added new channels to DB")
-			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Added new channels!")
+			if err != nil {
+				c.Log.Printf("Failed to add channels:%v\n", err)
+			} else {
+				c.Log.Println("Added new channels to DB")
+				c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Added new channels!")
+			}
+		}
+	}
+}
+
+func (c *DiscordClient) removeChannel(s *discordgo.Session, m *discordgo.MessageCreate, prefix string) {
+	if strings.HasPrefix(m.Content, prefix+"remove") {
+		split := strings.Split(m.Content, " ")
+
+		ids, err := c.WatchClient.ExtractIDs(split[1:])
+		if err != nil {
+			c.Log.Printf("Failed to remove channels%v\n", err)
+			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to remove channels. See logs for more details")
+		} else {
+			err = c.DatabaseClient.RemoveChannels(ids)
+			if err != nil {
+				c.Log.Printf("Failed to remove channels%v\n", err)
+				c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to remove channels. See logs for more details")
+			} else {
+				c.Log.Println("Removed channels from DB")
+				c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Removed channels!")
+			}
 		}
 	}
 }

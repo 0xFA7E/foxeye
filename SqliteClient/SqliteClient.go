@@ -3,6 +3,7 @@ package SqliteClient
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -58,12 +59,31 @@ func (db *SQLCli) AddChannels(idMap map[string]string) error {
 		row, err := db.DB.Query("SELECT * from ChannelWatch where ChannelLink=?;", channel)
 		if (row.Next()) == true {
 			//record already exists, skip
-			continue
+			return errors.New("Channel already exists")
 		}
 		_, err2 := stmt.Exec(channel, chanid, "", "")
 		if err2 != nil {
 			return errors.New("Failed to insert channel: " + err.Error())
 		}
+	}
+	return nil
+}
+
+func (db *SQLCli) RemoveChannels(idMap map[string]string) error {
+	sqlAdditem := `
+	DELETE FROM ChannelWatch WHERE ChanID =?;
+		`
+	stmt, err := db.DB.Prepare(sqlAdditem)
+	if err != nil {
+		return errors.New("Could not prep remove item statement: " + err.Error())
+	}
+	defer stmt.Close()
+	for _, chanid := range idMap {
+		res, err := stmt.Exec(chanid)
+		if err != nil {
+			return errors.New("Failed to remove channel: " + err.Error())
+		}
+		fmt.Println(res)
 	}
 	return nil
 }

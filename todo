@@ -11,13 +11,13 @@ implement better logging across the board, implement better recovery now that we
 
 add proper comments for exported functions
 
-decouple sql client from ytclient. It shouldnt need to know any DB stuff, just execute queries and return, let the higher level logic decide what to do with It
--yt functions outside setup should all return useable data. Everything that calls it should expect to use that data
--main foxeye.go should ONLY have construction, logic should be passed off 
+//decouple sql client from ytclient. It shouldnt need to know any DB stuff, just execute queries and return, let the higher level logic decide what to do with It
+//-yt functions outside setup should all return useable data. Everything that calls it should expect to use that data
+//-main foxeye.go should ONLY have construction, logic should be passed off 
 -discord commands should get own file
--discord can see yt and sql. 
+//-discord can see yt and sql. 
 
-hierarchy should be as so:
+//hierarchy should be as so:
 
                                             foxeye(initialize/deal with configuration)
                                                             |
@@ -26,6 +26,8 @@ hierarchy should be as so:
                                                 --------DiscordGo--------
                                                 |                       |
                                             YTclient                SqlClient
+
+change command handler to process a route map
 
 //core feature
 Add discord commands:

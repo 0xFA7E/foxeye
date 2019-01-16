@@ -21,6 +21,7 @@ type Video interface {
 
 type Database interface {
 	AddChannels(idMap map[string]string) error
+	RemoveChannels(idMap map[string]string) error
 	UpdateVideo(channelID string, lastVideo string, updateTime string) bool
 	UpdateChanID(channel string, channelID string) error
 	//RecentVidFromURL(channel string) (lastVideo string, updateTime string, err error)
