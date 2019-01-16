@@ -33,19 +33,21 @@ func (s config) IsEmpty() bool {
 	return reflect.DeepEqual(s, config{})
 }
 
-func setupClients(c *config) (YTClient.YoutubeClient, DiscordClient.DiscordClient, SqliteClient.SQLCli) {
-	ytClient := YTClient.YoutubeClient{APIKey: c.YtAPIKey}
-	ytClient.Service()
-	dclient := DiscordClient.DiscordClient{APIKey: c.DiscordAPIKey, PostChannel: c.PostChannel, Log: log}
-	dclient.Init()
-	sqldb := SqliteClient.SQLCli{}
-	sqldb.InitDB(c.Database)
-	sqldb.CreateTable()
-	ytClient.SQLCli = &sqldb
-	dclient.SQLCli = &sqldb
-	dclient.YTClient = &ytClient
-
-	return ytClient, dclient, sqldb
+func setupClients(c *config) DiscordClient.DiscordClient {
+	ytClient := YTClient.Service(c.YtAPIKey)
+	//ytClient.Service()
+	sqldb := SqliteClient.InitDB(c.Database)
+	dclient := DiscordClient.DiscordClient{APIKey: c.DiscordAPIKey, PostChannel: c.PostChannel, Log: log, WatchClient: ytClient, DatabaseClient: sqldb}
+	err := dclient.Init()
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"ytClient": ytClient,
+			"sqldb":    sqldb,
+			"dclient":  dclient,
+			"error":    err,
+		}).Fatal("Could not intitialize Clients")
+	}
+	return dclient
 }
 
 func genConfig(filename string) {
@@ -68,11 +70,12 @@ func genConfig(filename string) {
 	dbfile, _ := reader.ReadString('\n')
 	configRaw.Database = strings.TrimSpace(dbfile)
 
-	fmt.Printf("\nChannels to Watch:")
-	chanlist, _ := reader.ReadString('\n')
-	ytClient, _, _ := setupClients(&configRaw)
-	ytClient.AddChannels(strings.Split(strings.TrimSpace(chanlist), " "))
-
+	/*
+		fmt.Printf("\nChannels to Watch:")
+		chanlist, _ := reader.ReadString('\n')
+		dclient := setupClients(&configRaw)
+		//ytClient.(strings.Split(strings.TrimSpace(chanlist), " "))
+	*/
 	configFile, err := os.Create(filename)
 	if err != nil {
 		log.WithFields(logrus.Fields{
@@ -131,12 +134,12 @@ func main() {
 	}
 	log.Info("FOXEYE ENGAGE")
 
-	ytClient, dClient, sqlClient := setupClients(&configuration)
+	dClient := setupClients(&configuration)
 	defer dClient.Close()
 	log.WithFields(logrus.Fields{
-		"Youtube Client": ytClient,
 		"Discord Client": dClient,
-		"SQL Client":     sqlClient,
+		"Youtube Client": dClient.WatchClient,
+		"SQL Client":     dClient.DatabaseClient,
 	}).Debug("Bot is now running")
 
 	go dClient.MonitorUploads(ytTimeRate)

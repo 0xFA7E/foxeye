@@ -1,14 +1,12 @@
 package YTClient
 
 import (
-	"errors"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/0xFA7E/foxeye/SqliteClient"
-
+	"github.com/0xFA7E/foxeye/DiscordClient"
 	"google.golang.org/api/googleapi/transport"
 	youtube "google.golang.org/api/youtube/v3"
 )
@@ -21,54 +19,34 @@ client. Methods can then be attached to call the api such as RecentVideo */
 type YoutubeClient struct {
 	APIKey  string
 	service *youtube.Service
-	SQLCli  *SqliteClient.SQLCli
+	//SQLCli  *SqliteClient.SQLCli
 }
 
-func (c *YoutubeClient) Service() {
-	client := &http.Client{Transport: &transport.APIKey{Key: c.APIKey}}
+func Service(apikey string) *YoutubeClient {
+	client := &http.Client{Transport: &transport.APIKey{Key: apikey}}
 	ser, err := youtube.New(client)
 	if err != nil {
 		log.Fatalf("Error creating youtube client: %v", err)
 	}
-	c.service = ser
+	ytClient := YoutubeClient{APIKey: apikey, service: ser}
+	return &ytClient
 }
 
-func (c *YoutubeClient) ExtractID(url string) (string, error) {
-
-	s := strings.Split(url, "/")
-	if strings.Contains(url, "/channel/") {
-		c.SQLCli.UpdateChanID(url, s[len(s)-1])
-		return s[len(s)-1], nil
-	}
-	call := c.service.Channels.List("id")
-	call = call.ForUsername(s[len(s)-1])
-	resp, err := call.Do()
-	if err != nil {
-		return "", err
-	}
-	if len(resp.Items) <= 0 {
-		return "", errors.New("Not a valid channel link")
-	}
-	c.SQLCli.UpdateChanID(url, resp.Items[0].Id)
-	return resp.Items[0].Id, nil
-}
-
-func (c *YoutubeClient) RecentVideo(timeAfter time.Time) []string {
+func (c *YoutubeClient) RecentVideo(channelIds []string, timeAfter time.Time) ([]DiscordClient.Video, error) {
 	//fmt.Printf("Checking results of %v at %v\n", channel.channelID, YTime(time.Now()))
 	//building our request, first is type of info we want
-	var urls []string
-	channels := c.SQLCli.WatchList()
-	channelList := strings.Join(channels[:], ",")
+	var videos []DiscordClient.Video
+	channelList := strings.Join(channelIds[:], ",")
 	call := c.service.Channels.List("contentDetails")
 	//we want grouped results of channel IDs hopefully conserves quota
 	call = call.Id(channelList)
 	response, err := call.Do()
 	if err != nil {
 		log.Printf("Failure executing request: %v", err)
-		return []string{}
+		return []DiscordClient.Video{}, err
 	}
 	if len(response.Items) == 0 {
-		return []string{}
+		return []DiscordClient.Video{}, err
 	}
 	for _, respItem := range response.Items {
 		respChan := respItem.Id
@@ -79,21 +57,49 @@ func (c *YoutubeClient) RecentVideo(timeAfter time.Time) []string {
 		playlistResponse, err := playlistCall.Do()
 		if err != nil {
 			log.Printf("\n\n[!]Failure executing request: %v\n\n", err)
-			return []string{}
+			return []DiscordClient.Video{}, err
 		}
 		if len(playlistResponse.Items) == 0 {
-			return []string{}
+			return []DiscordClient.Video{}, nil
 		}
 		publishedAt := playlistResponse.Items[0].ContentDetails.VideoPublishedAt
 		rVid := playlistResponse.Items[0].ContentDetails.VideoId
-		isNew := c.SQLCli.UpdateVideo(respChan, rVid, publishedAt)
-		if isNew == true {
-			urls = append(urls, createLink(rVid))
-		}
+		//isNew := c.SQLCli.UpdateVideo(respChan, rVid, publishedAt)
+		link := CreateLink(rVid)
+		v := &Video{}
+		v.New(respChan, link, publishedAt)
+		videos = append(videos, v)
 	}
-	return urls
+	return videos, nil
 }
 
+func (c *YoutubeClient) ExtractIDs(urls []string) (map[string]string, error) {
+	ids := make(map[string]string)
+	for _, v := range urls {
+		s := strings.Split(v, "/")
+		if strings.Contains(v, "/channel/") {
+			//c.SQLCli.UpdateChanID(v, s[len(s)-1])
+			ids[v] = s[len(s)-1]
+		}
+		call := c.service.Channels.List("id")
+		call = call.ForUsername(s[len(s)-1])
+		resp, err := call.Do()
+		if err != nil {
+			//TODO add logging
+			continue
+		}
+		if len(resp.Items) <= 0 {
+			//TODO add logging
+			//return "", errors.New("Not a valid channel link")
+			continue
+		}
+		//c.SQLCli.UpdateChanID(url, resp.Items[0].Id)
+		ids[v] = resp.Items[0].Id
+	}
+	return ids, nil
+}
+
+/*
 func (c *YoutubeClient) AddChannels(channels []string) error {
 	for _, channel := range channels {
 		channelID, err := c.ExtractID(channel)
@@ -107,8 +113,8 @@ func (c *YoutubeClient) AddChannels(channels []string) error {
 	}
 	return nil
 }
-
-func createLink(vID string) string {
+*/
+func CreateLink(vID string) string {
 	url := watchyt + vID
 	return url
 }

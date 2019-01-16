@@ -7,28 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xFA7E/foxeye/SqliteClient"
 	"github.com/sirupsen/logrus"
 
-	"github.com/0xFA7E/foxeye/YTClient"
 	"github.com/bwmarrin/discordgo"
 )
 
-type DiscordClient struct {
-	*discordgo.Session
-	guild          string
-	channels       []discordgo.Channel
-	_events        chan bool
-	APIKey         string
-	commmandPrefix string
-	botID          string
-	PostChannel    string
-	Log            *logrus.Logger
-	YTClient       *YTClient.YoutubeClient
-	SQLCli         *SqliteClient.SQLCli
-}
-
-func (c *DiscordClient) Init() {
+func (c *DiscordClient) Init() error {
 	var err error
 	c._events = make(chan bool)
 
@@ -39,10 +23,16 @@ func (c *DiscordClient) Init() {
 	if c.APIKey == "" {
 		log.Fatalf("APIKey not set, cannot initialize")
 	}
+	if c.WatchClient == nil {
+		return errors.New("WatchClient emplty")
+	}
+	if c.DatabaseClient == nil {
+		return errors.New("DatabaseClient empty")
+	}
 	c.Session, err = discordgo.New("Bot " + c.APIKey)
 	if err != nil {
-		log.Fatalf("Error creating session: %v", err)
-		return
+		//log.Fatalf("Error creating session: %v", err)
+		return err
 	}
 	//retrieve bot ID
 	user, nerr := c.Session.User("@me")
@@ -54,13 +44,12 @@ func (c *DiscordClient) Init() {
 	c.AddHandler(c.guildCreate)
 	err = c.Open()
 	if err != nil {
-		log.Fatalf("Error opening connection: %v", err)
-		return
+		//log.Fatalf("Error opening connection: %v", err)
+		return err
 	}
-
 	<-c._events
 	//fmt.Println("Popped")
-	return
+	return nil
 }
 
 func (c *DiscordClient) MonitorUploads(rate time.Duration) {
@@ -68,15 +57,24 @@ func (c *DiscordClient) MonitorUploads(rate time.Duration) {
 		t := time.Now()
 		timer := time.NewTimer(rate * time.Second)
 		<-timer.C
-		videos := c.YTClient.RecentVideo(t)
+		videoList := c.DatabaseClient.WatchList()
+		videos, err := c.WatchClient.RecentVideo(videoList, t)
+		if err != nil {
+			c.Log.WithFields(logrus.Fields{
+				"videos": videos,
+				"error":  err,
+			}).Error("RecentVideo pull had a problem")
+		}
 		if videos != nil {
 			for _, v := range videos {
-				err := c.SendByName(c.PostChannel, v)
-				if err != nil {
-					c.Log.WithFields(logrus.Fields{
-						"Post Channel": c.PostChannel,
-						"Video":        v,
-					}).Error("Error sending message")
+				if c.DatabaseClient.UpdateVideo(v.ChannelID(), v.VideoLink(), v.PublishTime()) {
+					err := c.SendByName(c.PostChannel, v.VideoLink())
+					if err != nil {
+						c.Log.WithFields(logrus.Fields{
+							"Post Channel": c.PostChannel,
+							"Video":        v,
+						}).Error("Error sending message")
+					}
 				}
 			}
 		}
@@ -97,12 +95,13 @@ func (c *DiscordClient) addChannel(s *discordgo.Session, m *discordgo.MessageCre
 	if strings.HasPrefix(m.Content, prefix+"watch") {
 		split := strings.Split(m.Content, " ")
 		//we cutoff the first part of the split, as its the prefix.
-		err := c.YTClient.AddChannels(split[1:])
+		ids, err := c.WatchClient.ExtractIDs(split[1:])
 		if err != nil {
-			log.Printf("Failed to add channels:%v\n", err)
+			c.Log.Printf("Failed to add channels:%v\n", err)
 			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to add channels. See logs for more details")
 		} else {
-			log.Println("Added new channels to DB")
+			err = c.DatabaseClient.AddChannels(ids)
+			c.Log.Println("Added new channels to DB")
 			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Added new channels!")
 		}
 	}
