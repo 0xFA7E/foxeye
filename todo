@@ -1,37 +1,16 @@
-//Check vid updates still working after overhaul!
-
-//Swap SQL over to struct methods
-
-//Remove Channel Struct from YTclient, swap all logic to use sql directly rather than awkward middle man
-
-//form github repo
 
 implement better logging across the board, implement better recovery now that we know the base logic is working
 -foxeye.go done, need to implement across clients, need to pass logger context, need command flag to set verbose level
 
 add proper comments for exported functions
 
-//decouple sql client from ytclient. It shouldnt need to know any DB stuff, just execute queries and return, let the higher level logic decide what to do with It
-//-yt functions outside setup should all return useable data. Everything that calls it should expect to use that data
-//-main foxeye.go should ONLY have construction, logic should be passed off 
--discord commands should get own file
-//-discord can see yt and sql. 
-
-//hierarchy should be as so:
-
-                                            foxeye(initialize/deal with configuration)
-                                                            |
-                                                            |
-                                                            |
-                                                --------DiscordGo--------
-                                                |                       |
-                                            YTclient                SqlClient
-
-change command handler to process a route map
-
 //core feature
 Add discord commands:
     //add channel to watch list
-    remove channel from watch list
-    user roles so not everyone can freely remove/add
-    playlist/quick link adding/posting
+    //remove channel from watch list
+    user roles so not everyone can freely remove/add -sorta
+    //playlist/quick link adding/posting
+
+
+Permissions are pretty broad right now, admin roles have full power no matter what, but any mods also have full power. Finer grain permissions 
+needs to be implemented but as this bot isnt super critical the worse a mod can do at the moment is grief. 

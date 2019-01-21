@@ -19,7 +19,6 @@ client. Methods can then be attached to call the api such as RecentVideo */
 type YoutubeClient struct {
 	APIKey  string
 	service *youtube.Service
-	//SQLCli  *SqliteClient.SQLCli
 }
 
 func Service(apikey string) *YoutubeClient {
@@ -33,7 +32,6 @@ func Service(apikey string) *YoutubeClient {
 }
 
 func (c *YoutubeClient) RecentVideo(channelIds []string, timeAfter time.Time) ([]DiscordClient.Video, error) {
-	//fmt.Printf("Checking results of %v at %v\n", channel.channelID, YTime(time.Now()))
 	//building our request, first is type of info we want
 	var videos []DiscordClient.Video
 	channelList := strings.Join(channelIds[:], ",")
@@ -64,7 +62,6 @@ func (c *YoutubeClient) RecentVideo(channelIds []string, timeAfter time.Time) ([
 		}
 		publishedAt := playlistResponse.Items[0].ContentDetails.VideoPublishedAt
 		rVid := playlistResponse.Items[0].ContentDetails.VideoId
-		//isNew := c.SQLCli.UpdateVideo(respChan, rVid, publishedAt)
 		link := CreateLink(rVid)
 		v := &Video{}
 		v.New(respChan, link, publishedAt)
@@ -78,7 +75,6 @@ func (c *YoutubeClient) ExtractIDs(urls []string) (map[string]string, error) {
 	for _, v := range urls {
 		s := strings.Split(v, "/")
 		if strings.Contains(v, "/channel/") {
-			//c.SQLCli.UpdateChanID(v, s[len(s)-1])
 			ids[v] = s[len(s)-1]
 		}
 		call := c.service.Channels.List("id")
@@ -93,27 +89,10 @@ func (c *YoutubeClient) ExtractIDs(urls []string) (map[string]string, error) {
 			//return "", errors.New("Not a valid channel link")
 			continue
 		}
-		//c.SQLCli.UpdateChanID(url, resp.Items[0].Id)
 		ids[v] = resp.Items[0].Id
 	}
 	return ids, nil
 }
-
-/*
-func (c *YoutubeClient) AddChannels(channels []string) error {
-	for _, channel := range channels {
-		channelID, err := c.ExtractID(channel)
-		if err != nil {
-			return errors.New("Failed to extract channel id")
-		}
-		err = c.SQLCli.AddChannel(channel, channelID)
-		if err != nil {
-			return errors.New("Failed to add channel")
-		}
-	}
-	return nil
-}
-*/
 func CreateLink(vID string) string {
 	url := watchyt + vID
 	return url

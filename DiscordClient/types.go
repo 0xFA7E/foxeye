@@ -24,8 +24,13 @@ type Database interface {
 	RemoveChannels(idMap map[string]string) error
 	UpdateVideo(channelID string, lastVideo string, updateTime string) bool
 	UpdateChanID(channel string, channelID string) error
-	//RecentVidFromURL(channel string) (lastVideo string, updateTime string, err error)
+	AddLink(linkID string, link string) error
+	RemoveLink(linkID string) error
+	FetchLink(linkID string) (string, error)
+	IsAuthorized(userID string) bool
 	WatchList() []string
+	AddMod(userID string) error
+	RemoveMod(userID string) error
 }
 
 type DiscordClient struct {
@@ -34,10 +39,17 @@ type DiscordClient struct {
 	channels       []discordgo.Channel
 	_events        chan bool
 	APIKey         string
-	commmandPrefix string
+	commandPrefix  string
 	botID          string
 	PostChannel    string
 	Log            *logrus.Logger
 	WatchClient    Watcher
 	DatabaseClient Database
+	RouteMap       []Route
+}
+
+type Route struct {
+	Prefix     string
+	Restricted bool
+	Call       func(s *discordgo.Session, m *discordgo.MessageCreate, args []string)
 }

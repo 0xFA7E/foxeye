@@ -35,7 +35,6 @@ func (s config) IsEmpty() bool {
 
 func setupClients(c *config) DiscordClient.DiscordClient {
 	ytClient := YTClient.Service(c.YtAPIKey)
-	//ytClient.Service()
 	sqldb := SqliteClient.InitDB(c.Database)
 	dclient := DiscordClient.DiscordClient{APIKey: c.DiscordAPIKey, PostChannel: c.PostChannel, Log: log, WatchClient: ytClient, DatabaseClient: sqldb}
 	err := dclient.Init()
@@ -148,5 +147,5 @@ func main() {
 	<-sc
 
 	log.Info("Closing bot")
-	dClient.SendByName("test", "NOOO I DONT WANT TO DI----")
+	dClient.SendByName(configuration.PostChannel, "NOOO I DONT WANT TO DI----")
 }

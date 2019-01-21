@@ -24,7 +24,7 @@ func InitDB(filename string) *SQLCli {
 		log.Fatalf("DB not a db?")
 	}
 
-	sql_table := `
+	sqlWatchTable := `
 	CREATE TABLE IF NOT EXISTS ChannelWatch(
 		ID INTEGER PRIMARY KEY AUTOINCREMENT,
 		ChannelLink TEXT,
@@ -33,13 +33,139 @@ func InitDB(filename string) *SQLCli {
 		LastUpdate TEXT
 		);
 		`
-	_, err = sqlcli.DB.Exec(sql_table)
+	_, err = sqlcli.DB.Exec(sqlWatchTable)
 	if err != nil {
 		log.Fatalf("failed to create ChannelWatch table:%v", err)
 	}
-
+	sqlLinkTable := `
+	CREATE TABLE IF NOT EXISTS QuickLinks(
+		ID INTEGER PRIMARY KEY AUTOINCREMENT,
+		LinkID TEXT,
+		Link TEXT
+		);
+		`
+	_, err = sqlcli.DB.Exec(sqlLinkTable)
+	if err != nil {
+		log.Fatalf("Failed to create QuickLinks table:%v", err)
+	}
+	botMods := `
+	CREATE TABLE IF NOT EXISTS BotMods(
+		ID INTEGER PRIMARY KEY AUTOINCREMENT,
+		UserID TEXT);`
+	_, err = sqlcli.DB.Exec(botMods)
+	if err != nil {
+		log.Fatalf("Failed to create BotMods table:%v", err)
+	}
 	return &sqlcli
 }
+
+func (db *SQLCli) IsAuthorized(userID string) bool {
+	row, err := db.DB.Query("SELECT ID from BotMods where UserID=?;", userID)
+	defer row.Close()
+	for row.Next() {
+		var response string
+		err = row.Scan(&response)
+		if err != nil {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func (db *SQLCli) AddMod(userID string) error {
+	sqlAdditem := `
+	INSERT OR REPLACE INTO BotMods(
+		UserID
+		) values(?);
+		`
+	stmt, err := db.DB.Prepare(sqlAdditem)
+	if err != nil {
+		return errors.New("Could not prep add item statement: " + err.Error())
+	}
+	row, err := db.DB.Query("SELECT * from BotMods where UserID=?;", userID)
+	if (row.Next()) == true {
+		//record already exists, skip
+		return errors.New("Mod already exists")
+	}
+	_, err = stmt.Exec(userID)
+	if err != nil {
+		return errors.New("Could not add quick link: " + err.Error())
+	}
+	return nil
+}
+
+func (db *SQLCli) RemoveMod(userID string) error {
+	sqlRemoveItem := `
+	DELETE FROM BotMods WHERE UserID =?;
+		`
+	stmt, err := db.DB.Prepare(sqlRemoveItem)
+	if err != nil {
+		return errors.New("Could not prep remove item statement: " + err.Error())
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(userID)
+	if err != nil {
+		return errors.New("Could not remove item: " + err.Error())
+	}
+	return nil
+}
+
+func (db *SQLCli) AddLink(linkID string, link string) error {
+	sqlAdditem := `
+	INSERT OR REPLACE INTO QuickLinks(
+		LinkID,
+		Link
+		) values(?,?);
+		`
+	stmt, err := db.DB.Prepare(sqlAdditem)
+	if err != nil {
+		return errors.New("Could not prep add item statement: " + err.Error())
+	}
+	row, err := db.DB.Query("SELECT * from QuickLinks where LinkID=? OR link=?;", linkID, link)
+	if (row.Next()) == true {
+		//record already exists, skip
+		return errors.New("link already exists")
+	}
+	_, err = stmt.Exec(linkID, link)
+	if err != nil {
+		return errors.New("Could not add quick link: " + err.Error())
+	}
+	return nil
+}
+
+func (db *SQLCli) FetchLink(linkID string) (string, error) {
+
+	row, err := db.DB.Query("SELECT Link from QuickLinks where LinkID=?;", linkID)
+	defer row.Close()
+	for row.Next() {
+		var response string
+		err = row.Scan(&response)
+		if err != nil {
+			return "", errors.New("Could not retrieve link: " + err.Error())
+		}
+		return response, nil
+	}
+	//shouldnt get here
+	return "", nil
+}
+
+func (db *SQLCli) RemoveLink(linkID string) error {
+	sqlRemoveItem := `
+	DELETE FROM QuickLinks WHERE LinkID =?;
+		`
+	stmt, err := db.DB.Prepare(sqlRemoveItem)
+	if err != nil {
+		return errors.New("Could not prep remove item statement: " + err.Error())
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(linkID)
+	if err != nil {
+		return errors.New("Could not remove item: " + err.Error())
+	}
+	return nil
+}
+
 func (db *SQLCli) AddChannels(idMap map[string]string) error {
 	sqlAdditem := `
 	INSERT OR REPLACE INTO ChannelWatch(
@@ -70,10 +196,10 @@ func (db *SQLCli) AddChannels(idMap map[string]string) error {
 }
 
 func (db *SQLCli) RemoveChannels(idMap map[string]string) error {
-	sqlAdditem := `
+	sqlRemoveItem := `
 	DELETE FROM ChannelWatch WHERE ChanID =?;
 		`
-	stmt, err := db.DB.Prepare(sqlAdditem)
+	stmt, err := db.DB.Prepare(sqlRemoveItem)
 	if err != nil {
 		return errors.New("Could not prep remove item statement: " + err.Error())
 	}
@@ -89,7 +215,6 @@ func (db *SQLCli) RemoveChannels(idMap map[string]string) error {
 }
 
 func (db *SQLCli) UpdateVideo(chanID string, lastvideo string, time string) bool {
-	//fmt.Printf("I got called with: \n%v\n%v\n%v\n%v\n", db, chanID, lastvideo, time)
 	sqlLastVid, err := db.DB.Query("Select LastVideo from ChannelWatch where ChanID=?;", chanID)
 	if err != nil {
 		log.Fatalf("Failed to query DB:%v", err)
@@ -102,18 +227,14 @@ func (db *SQLCli) UpdateVideo(chanID string, lastvideo string, time string) bool
 			log.Fatalf("Could not retrieve LastVideo to check recent:%v", err)
 		}
 		if response == lastvideo {
-			//fmt.Printf("No new video\n") //I LIE
 			//we havnt actually found a new video, fuck youtube
 			return false
 		}
 	}
-
-	//fmt.Println("Attempting to update sql")
 	sqlUpdate, err := db.DB.Prepare("update ChannelWatch set LastVideo=?, LastUpdate=? where ChanID=?;")
 	if err != nil {
 		log.Fatalf("Failed to update video:%v", err)
 	}
-	//fmt.Println("Attempting to execute sql with: %v,%v,%v", lastvideo, time, chanID)
 	_, err = sqlUpdate.Exec(lastvideo, time, chanID)
 	if err != nil {
 		log.Fatalf("Failed to execute update statement:%v", err)
@@ -132,29 +253,6 @@ func (db *SQLCli) UpdateChanID(channelLink string, channelID string) error {
 	}
 	return nil
 }
-
-/*
-func (db *SQLCli) RecentVidFromURL(channel string) (lastvid string, updatetime string) {
-	sqlCheck := `
-	SELECT LastVideo, LastUpdate from ChannelWatch
-	WHERE ChanID = ?
-	`
-	rows, err := db.DB.Query(sqlCheck, channel)
-	if err != nil {
-		log.Fatalf("Failed to get last video:%v", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		err2 := rows.Scan(&lastvid, &updatetime)
-		if err2 != nil {
-			log.Fatalf("Failed to scan last vid info:%v", err)
-		}
-		return
-	}
-	return
-}
-*/
 func (db *SQLCli) WatchList() []string {
 	sqlReadAll := `
 	SELECT ChanID from ChannelWatch

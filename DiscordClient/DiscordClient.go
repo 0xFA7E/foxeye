@@ -16,8 +16,8 @@ func (c *DiscordClient) Init() error {
 	var err error
 	c._events = make(chan bool)
 
-	if c.commmandPrefix == "" {
-		c.commmandPrefix = "f!"
+	if c.commandPrefix == "" {
+		c.commandPrefix = "f!"
 	}
 
 	if c.APIKey == "" {
@@ -31,7 +31,6 @@ func (c *DiscordClient) Init() error {
 	}
 	c.Session, err = discordgo.New("Bot " + c.APIKey)
 	if err != nil {
-		//log.Fatalf("Error creating session: %v", err)
 		return err
 	}
 	//retrieve bot ID
@@ -40,15 +39,55 @@ func (c *DiscordClient) Init() error {
 		log.Fatalf("Could not retrieve bot ID")
 	}
 	c.botID = user.ID
+	c.RouteMap = []Route{
+		Route{
+			Prefix:     "ping",
+			Call:       c.ping,
+			Restricted: false,
+		},
+		Route{
+			Prefix:     "play",
+			Call:       c.quickLinkPlay,
+			Restricted: false,
+		},
+		Route{
+			Prefix:     "linkadd",
+			Call:       c.quickLinkAdd,
+			Restricted: true,
+		},
+		Route{
+			Prefix:     "linkremove",
+			Call:       c.quickLinkRemove,
+			Restricted: true,
+		},
+		Route{
+			Prefix:     "add",
+			Call:       c.addChannel,
+			Restricted: true,
+		},
+		Route{
+			Prefix:     "remove",
+			Call:       c.removeChannel,
+			Restricted: true,
+		},
+		Route{
+			Prefix:     "modadd",
+			Call:       c.addMod,
+			Restricted: true,
+		},
+		Route{
+			Prefix:     "modremove",
+			Call:       c.removeMod,
+			Restricted: true,
+		},
+	}
 	c.AddHandler(c.commandHandler)
 	c.AddHandler(c.guildCreate)
 	err = c.Open()
 	if err != nil {
-		//log.Fatalf("Error opening connection: %v", err)
 		return err
 	}
 	<-c._events
-	//fmt.Println("Popped")
 	return nil
 }
 
@@ -87,55 +126,23 @@ func (c *DiscordClient) commandHandler(s *discordgo.Session, m *discordgo.Messag
 	if user.ID == c.botID || user.Bot {
 		return
 	}
-	c.ping(s, m, c.commmandPrefix)
-	c.addChannel(s, m, c.commmandPrefix)
-	c.removeChannel(s, m, c.commmandPrefix)
-}
-
-func (c *DiscordClient) addChannel(s *discordgo.Session, m *discordgo.MessageCreate, prefix string) {
-	if strings.HasPrefix(m.Content, prefix+"watch") {
-		split := strings.Split(m.Content, " ")
-		//we cutoff the first part of the split, as its the prefix.
-		ids, err := c.WatchClient.ExtractIDs(split[1:])
-		if err != nil {
-			c.Log.Printf("Failed to add channels:%v\n", err)
-			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to add channels. See logs for more details")
-		} else {
-			err = c.DatabaseClient.AddChannels(ids)
-			if err != nil {
-				c.Log.Printf("Failed to add channels:%v\n", err)
-			} else {
-				c.Log.Println("Added new channels to DB")
-				c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Added new channels!")
+	if strings.HasPrefix(m.Content, c.commandPrefix) {
+		split := strings.Split(m.Content, c.commandPrefix)
+		split = strings.Split(split[1], " ")
+		for _, route := range c.RouteMap {
+			if split[0] == route.Prefix {
+				if route.Restricted == true {
+					authorized := c.userAuthorized(s, m, user.ID)
+					if authorized == true {
+						route.Call(s, m, split[1:])
+					} else {
+						return
+					}
+				} else {
+					route.Call(s, m, split[1:])
+				}
 			}
 		}
-	}
-}
-
-func (c *DiscordClient) removeChannel(s *discordgo.Session, m *discordgo.MessageCreate, prefix string) {
-	if strings.HasPrefix(m.Content, prefix+"remove") {
-		split := strings.Split(m.Content, " ")
-
-		ids, err := c.WatchClient.ExtractIDs(split[1:])
-		if err != nil {
-			c.Log.Printf("Failed to remove channels%v\n", err)
-			c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to remove channels. See logs for more details")
-		} else {
-			err = c.DatabaseClient.RemoveChannels(ids)
-			if err != nil {
-				c.Log.Printf("Failed to remove channels%v\n", err)
-				c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Failed to remove channels. See logs for more details")
-			} else {
-				c.Log.Println("Removed channels from DB")
-				c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Removed channels!")
-			}
-		}
-	}
-}
-
-func (c *DiscordClient) ping(s *discordgo.Session, m *discordgo.MessageCreate, prefix string) {
-	if strings.HasPrefix(m.Content, prefix+"ping") {
-		c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+" Pong!")
 	}
 }
 
@@ -162,7 +169,6 @@ func (c *DiscordClient) SendByName(chanName string, msg string) error {
 	for _, channel := range c.channels {
 		if channel.Name == chanName {
 			_, err := c.ChannelMessageSend(channel.ID, msg)
-			//fmt.Println(s)
 			if err != nil {
 				return err
 			}
@@ -170,4 +176,36 @@ func (c *DiscordClient) SendByName(chanName string, msg string) error {
 		}
 	}
 	return errors.New("No chan name found by name: " + chanName)
+
+}
+
+func (c *DiscordClient) reply(m *discordgo.MessageCreate, response string) {
+	_, err := c.ChannelMessageSend(m.ChannelID, m.Author.Mention()+response)
+	if err != nil {
+		c.Log.Errorln(err)
+	}
+}
+
+func (c *DiscordClient) userAuthorized(s *discordgo.Session, m *discordgo.MessageCreate, userID string) bool {
+	//first we pull the users roles and check if theyre an admin, that overrides permission, then we check the db
+	member, err := s.State.Member(m.GuildID, userID)
+	if err != nil {
+		c.Log.Errorf("Failed getting member info:%v", err)
+		return false
+	}
+	for _, roleID := range member.Roles {
+		role, err := s.State.Role(m.GuildID, roleID)
+		if err != nil {
+			c.Log.Error(err)
+			return false
+		}
+		if role.Permissions&discordgo.PermissionAdministrator != 0 {
+			return true
+		}
+	}
+
+	//user is not an admin, check db for authorized users
+	authorized := c.DatabaseClient.IsAuthorized(userID)
+	fmt.Println(authorized)
+	return authorized
 }
